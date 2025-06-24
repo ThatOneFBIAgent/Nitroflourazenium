@@ -2,8 +2,12 @@ import discord
 from discord.ext import commands
 import config
 import asyncio
+import random
+import sys
 import logging
-import aiohttp  # Keep in case it's needed for cogs
+import socket
+import aiohttp # straight up useless but whatever
+
 
 # Import command cogs
 from commands.economy import Economy
@@ -16,6 +20,7 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -32,7 +37,7 @@ async def on_ready():
     await bot.tree.sync()
     print("Commands synced!")
 
-# Launch the bot
+# Run the bot
 async def main():
     async with bot:
         await load_cogs()
