@@ -17,17 +17,22 @@ logging.basicConfig(
 def log_db_call(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        logging.info(f"DB CALL: {func.__name__} called with args={args}, kwargs={kwargs}")
+        logging.info(f"ECON DB CALL: {func.__name__} called with args={args}, kwargs={kwargs}")
         return func(*args, **kwargs)
     return wrapper
 
-logging.info("DB Logging begin")
+logging.info("Economy DB Logging begin")
 
-# Ensure 'data' directory exists
-os.makedirs("data", exist_ok=True)
+# Get the absolute path to the directory where this file is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Paths for databases
-ECONOMY_DB_PATH = "data/economy.db"
+# Ensure 'data' directory exists relative to this file
+DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Paths for databases (relative to script location)
+ECONOMY_DB_PATH = os.path.join(DATA_DIR, "economy.db")
+
 SHOP_ITEMS = [
     {"id": 1, "name": "Bragging Rights", "price": 10000, "effect": "Nothing. Just flex.", "uses_left": 1},
     {"id": 2, "name": "Financial Drain", "price": 5000, "effect": "Drains one percent of your balance per hour, I wonder where that money goes..", "uses_left": 1},
@@ -45,15 +50,6 @@ SHOP_ITEMS = [
 # Connect to economy.db (for user balances and everything)
 econ_conn = sqlite3.connect(ECONOMY_DB_PATH)
 econ_cursor = econ_conn.cursor()
-item_conn = econ_conn
-item_cursor = item_conn.cursor()
-
-def backup_database():
-    try:
-        shutil.copyfile("data/economy.db", "data/economy_backup.db")
-        print("✅ Database backup successful!")
-    except Exception as e:
-        print(f"❌ Backup failed: {e}")
 
 # Create tables if they don't exist
 
@@ -65,6 +61,8 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
+# god why the fuck am i making 2 tables, this is shit.
+# fuck you that's why.
 # User items table (tracks owned items & uses)
 econ_cursor.execute("""
 CREATE TABLE IF NOT EXISTS user_items (
@@ -146,45 +144,6 @@ def add_user(user_id, username):
     econ_cursor.execute("INSERT OR IGNORE INTO users (user_id, username, balance) VALUES (?, ?, 0)", (user_id, username))
     econ_conn.commit()
 
-@log_db_call
-def get_leaderboard(user_id):
-    """
-    Returns a tuple: (top_users, user_info)
-    - top_users: list of dicts [{user_id, username, balance, rank}, ...] for the top 10
-    - user_info: dict {user_id, username, balance, rank} for the requesting user
-    """
-    # Get top 10 users by balance
-    econ_cursor.execute("""
-        SELECT user_id, username, balance
-        FROM users
-        ORDER BY balance DESC
-        LIMIT 10
-    """)
-    top_rows = econ_cursor.fetchall()
-    top_users = [
-        {"user_id": row[0], "username": row[1], "balance": row[2], "rank": i+1}
-        for i, row in enumerate(top_rows)
-    ]
-
-    # Get the requesting user's balance and rank
-    econ_cursor.execute("""
-        SELECT user_id, username, balance,
-            (SELECT COUNT(*) + 1 FROM users WHERE balance > u.balance) AS rank
-        FROM users u
-        WHERE user_id = ?
-    """, (user_id,))
-    user_row = econ_cursor.fetchone()
-    if user_row:
-        user_info = {
-            "user_id": user_row[0],
-            "username": user_row[1],
-            "balance": user_row[2],
-            "rank": user_row[3]
-        }
-    else:
-        user_info = None
-
-    return top_users, user_info
 # ----------- Item Handling Functions -----------
 
 @log_db_call
