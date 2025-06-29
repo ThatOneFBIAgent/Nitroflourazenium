@@ -1,9 +1,4 @@
-import sqlite3
-import shutil
-import os
-import logging
-import asyncio
-import sys
+import sqlite3, shutil, os, logging, asyncio, sys
 from functools import wraps
 
 logging.basicConfig(
@@ -21,8 +16,18 @@ def log_db_call(func):
         return func(*args, **kwargs)
     return wrapper
 
-logging.info("Economy DB Logging begin")
+def log_mod_call(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        logging.info(f"MOD DB CALL: {func.__name__} called with args={args}, kwargs={kwargs}")
+        return func(*args, **kwargs)
+    return wrapper
 
+logging.info("Economy DB Logging begin")
+logging.info("Moderator DB Logging begin")
+
+
+# the next lines of code are nasty hacks becuase windows is shit
 # Get the absolute path to the directory where this file is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -32,6 +37,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # Paths for databases (relative to script location)
 ECONOMY_DB_PATH = os.path.join(DATA_DIR, "economy.db")
+MODERATOR_DB_PATH = os.path.join(DATA_DIR, "moderator.db")
 
 SHOP_ITEMS = [
     {"id": 1, "name": "Bragging Rights", "price": 10000, "effect": "Nothing. Just flex.", "uses_left": 1},
@@ -50,6 +56,8 @@ SHOP_ITEMS = [
 # Connect to economy.db (for user balances and everything)
 econ_conn = sqlite3.connect(ECONOMY_DB_PATH)
 econ_cursor = econ_conn.cursor()
+mod_conn = sqlite3.connect(MODERATOR_DB_PATH)
+mod_cursor = mod_conn.cursor()
 
 # Create tables if they don't exist
 
@@ -85,6 +93,9 @@ CREATE TABLE IF NOT EXISTS financial_drain (
 
 # Commit table creations
 econ_conn.commit()
+
+# continue this dumbassery with the mod tables now. am i going insane?
+# extremely.
 
 @log_db_call
 def modify_robber_multiplier(user_id, change, duration=None):
