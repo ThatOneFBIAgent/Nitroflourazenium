@@ -1,30 +1,81 @@
-import discord
-import random
-import asyncio
+import discord, random, asyncio
 from discord.ext import commands
 from discord import app_commands
 from discord import Interaction
 from database import update_balance, get_balance
-
+from config import cooldown
 
 
 class Gambling(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 🎰 SLOTS 🎰
     @app_commands.command(name="slots", description="Spin the slot machine and test your luck!")
+    @cooldown(8)
     async def slots(self, interaction: discord.Interaction, bet: int):
         user_id = interaction.user.id
         balance = get_balance(user_id)
         if bet <= 0 or bet > balance:
             return await interaction.response.send_message("❌ Invalid bet amount!", ephemeral=False)
-        
-        # Slot emojis
-        symbols = ["🍒", "🍋", "🍉", "⭐", "7️⃣", "🗿"]
-        slot1, slot2, slot3 = random.choices(symbols, k=3)
 
-        # Determine winnings
+        symbols = ["🍒", "🍋", "🍉", "⭐", "🍌", "🍑", "🥭", "7️⃣", "🗿"]
+        empty = "<:empty:1388238752295555162>"  # Replace with your actual :empty: emoji ID
+
+        # Prepare the final result for the middle row
+        final_row = random.choices(symbols, k=3)
+        top_final = random.choices(symbols, k=3)
+        bot_final = random.choices(symbols, k=3)
+
+        # Animation setup: all reels start spinning
+        spin_time = [2.5, 3.6, 4.5]  # seconds for each reel to stop
+        interval = 0.38 # Less spammy, lower = faster updates
+        elapsed = 0
+        start_time = asyncio.get_event_loop().time()
+        stopped = [False, False, False]
+        current = [[random.choice(symbols) for _ in range(3)] for _ in range(3)]  # 3 rows
+
+        embed = discord.Embed(title="Slot Machine", color=0xFFD700)
+        await interaction.response.send_message(embed=embed)
+        msg = await interaction.original_response()
+
+        while not all(stopped):
+            now = asyncio.get_event_loop().time()
+            elapsed = now - start_time
+
+            for col in range(3):
+                if not stopped[col]:
+                    # Update all 3 rows in this column with the same emoji
+                    emoji = random.choice(symbols)
+                    for row in range(3):
+                        current[row][col] = emoji
+
+            # Stop each reel at its time, and set its column to the final result
+            for col, t in enumerate(spin_time):
+                if not stopped[col] and elapsed >= t:
+                    stopped[col] = True
+                    current[0][col] = top_final[col]
+                    current[1][col] = final_row[col]
+                    current[2][col] = bot_final[col]
+
+            # Build the slot matrix
+            matrix = (
+                f"{empty} {current[0][0]} {current[0][1]} {current[0][2]} {empty}\n"
+                f"➡️ {current[1][0]} {current[1][1]} {current[1][2]} ⬅️\n"
+                f"{empty} {current[2][0]} {current[2][1]} {current[2][2]} {empty}"
+            )
+            embed.description = f"🎰{empty}🎰{empty}🎰\n{matrix}\n🎰{empty}🎰{empty}🎰\n*Spinning...*"
+            await msg.edit(embed=embed)
+            await asyncio.sleep(interval)
+
+        # Final display
+        matrix = (
+            f"{empty} {top_final[0]} {top_final[1]} {top_final[2]} {empty}\n"
+            f"➡️ {final_row[0]} {final_row[1]} {final_row[2]} ⬅️\n"
+            f"{empty} {bot_final[0]} {bot_final[1]} {bot_final[2]} {empty}"
+        )
+
+        # Determine winnings (middle row only)
+        slot1, slot2, slot3 = final_row
         winnings = 0
         if slot1 == slot2 == slot3:
             if slot1 == "7️⃣":
@@ -36,20 +87,19 @@ class Gambling(commands.Cog):
         elif slot1 == slot2 or slot2 == slot3 or slot1 == slot3:
             winnings = bet * 2
 
-        # Update balance
         update_balance(user_id, winnings - bet)
-        result = f"🎰 {slot1} | {slot2} | {slot3} 🎰\n"
+        result = f"🎰{empty}🎰{empty}🎰\n{matrix}\n🎰{empty}🎰{empty}🎰\n"
 
         if winnings > 0:
             result += f"✨ **You won `{winnings}` coins!** ✨"
         else:
             result += "💀 **You lost your bet...**"
 
-        embed = discord.Embed(title="Slot Machine", description=result, color=0xFFD700)
-        await interaction.response.send_message(embed=embed)
+        embed.description = result
+        await msg.edit(embed=embed)
 
-    # 🎲 ROULETTE 🎲
     @app_commands.command(name="roulette", description="Bet on a number or color (red/black) in Roulette!")
+    @cooldown(8)
     async def roulette(self, interaction: discord.Interaction, bet: int, choice: str):
         user_id = interaction.user.id
         balance = get_balance(user_id)
@@ -100,6 +150,7 @@ class Gambling(commands.Cog):
         await msg.edit(embed=embed)
 
     @app_commands.command(name="blackjack", description="Play a game of Blackjack!")
+    @cooldown(20)
     async def blackjack(self, interaction: discord.Interaction, bet: int):
         user_id = interaction.user.id
         balance = get_balance(user_id)
