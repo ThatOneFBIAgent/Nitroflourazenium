@@ -1,10 +1,9 @@
-import discord
+import discord, asyncio, re
 from discord.ext import commands
 from discord import app_commands
 from discord import Interaction
 from database import buy_item, modify_robber_multiplier, use_item 
-import asyncio
-import re
+from config import cooldown
 
 SHOP_ITEMS = [
     {"id": 1, "name": "Bragging Rights", "price": 10000, "effect": "Nothing. Just flex.", "uses_left": 1},
@@ -145,8 +144,6 @@ class Shop(commands.Cog):
         # Use the centralized item effect logic
         result_message = use_item(interaction.user.id, item_data["id"])
         await interaction.response.send_message(result_message, ephemeral=True)
-
-
 
 async def setup(bot):
     await bot.add_cog(Shop(bot))
