@@ -1,17 +1,10 @@
 import discord
-import time
-import random
-import re
-import asyncio
-import math
+import time, random, re, asyncio, math, io, aiohttp, subprocess, platform
 from discord.ext import commands
 from discord import app_commands
 from discord import Interaction
-import io
-import aiohttp
-# from pylatex import Document, Math, NoEscape
-# from pylatex.utils import escape_latex
-# from matplotlib import pyplot as plt
+from config import cooldown
+import threading
 
 # Constants for dice limits
 MAX_DICE = 100
@@ -23,6 +16,7 @@ class Fun(commands.Cog):
 
     # 🏓 PING COMMAND 🏓
     @app_commands.command(name="ping", description="Check the bot's response time!")
+    @cooldown(10)
     async def ping(self, interaction: discord.Interaction):
         start_time = time.perf_counter()
         await interaction.response.defer()
@@ -37,6 +31,7 @@ class Fun(commands.Cog):
 
     # 🎲 ADVANCED DICE ROLLER 🎲
     @app_commands.command(name="roll", description="Roll dice with advanced options (exploding, keep/drop, modifiers).")
+    @cooldown(5)
     async def roll(self, interaction: discord.Interaction, dice: str):
         # Regex pattern for dice: Xd!Y, Xd!!Y, Xd!Y+Z, XdYkN, XdYdN, etc.
         pattern = re.compile(
@@ -230,18 +225,67 @@ class Fun(commands.Cog):
         # Validate embed size to ensure it doesn't exceed Discord's limits
         total_length = sum(len(field.value) for field in embed.fields) + len(embed.title or "") + len(embed.description or "")
         if total_length > 6000:
+            # Output to file instead, but show error for final result
             embed.clear_fields()
-            embed.add_field(name="⚠️ Error", value="Embed content exceeded Discord's size limit. Please simplify your input.", inline=False)
-
-        await interaction.response.send_message(embed=embed)
+            file = io.BytesIO(embed.to_dict().encode('utf-8'))
+            file.name = "dice_roll_embed.json"
+            embed = discord.Embed(title="🎲 Dice Roll (Output to File)", color=0x3498db)
+            embed.add_field(name="🎯 Rolls", value=f"`{rolls_text}`", inline=True)
+            embed.add_field(name="⚠️ Error", value="Embed content exceeded Discord's size limit. Ouput is in file", inline=False)
+            await interaction.response.send_message(embed=embed, file=discord.File(file))
+        else:
+            # Send the embed normally
+            await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="8ball" , description="Ask the magic 8-ball a question!")
+    @cooldown(5)
     async def eight_ball(self, interaction: discord.Interaction, question: str):
+        if not question:
+            return await interaction.response.send_message("❌ **You must ask a question!**", ephemeral=True)
+        
+        # too little responses, blegh!
+        # instead we asked chatgpt for a bajillion more!
         responses = [
+            # Classic
             "Yes", "No", "Maybe", "Definitely", "Absolutely not",
             "Ask again later", "I wouldn't count on it", "It's certain",
-            "Don't hold your breath", "Yes, in due time"
+            "Don't hold your breath", "Yes, in due time",
+
+            # Vague wisdom
+            "The stars are unclear", "Signs point to yes", "Without a doubt",
+            "My sources say no", "Reply hazy, try again", "Better not tell you now",
+            "Cannot predict now", "Concentrate and ask again",
+
+            # Sarcastic
+            "Sure, and pigs might fly too", "Only if you believe hard enough",
+            "Yeah, no.", "Not even in the multiverse", "When hell freezes over",
+            "Ask your mom", "Absolutely. In your dreams.", "I plead the fifth",
+            "If I had a coin, I'd flip it", "Define 'possible'...",
+
+            # Meme-y
+            "You already know the answer", "That’s a skill issue", "Cringe question tbh",
+            "The Council has denied your request", "It is what it is", "Try Alt+F4",
+            "Your chances are as good as Genshin gacha rates", "lmao no",
+            "This message will self-destruct", "Roll a D20 and get back to me",
+
+            # Cryptic & cursed
+            "The void whispers yes", "The answer lies beneath your bed",
+            "You've already made your choice", "Don’t open the door tonight",
+            "There’s something behind you", "Only the cursed know for sure",
+            "It was never meant to be asked", "The prophecy says nothing of this",
+
+            # Chaotic neutral
+            "Yes but also no", "No but also yes", "42", "Meh",
+            "I flipped a coin but lost it", "You get what you get", 
+            "You don’t want to know", "Absolutely. Wait, what was the question?",
+            "¯\_(ツ)_/¯", "Hold on, I'm updating my firmware",
+
+            # Straight up lying
+            "Yes, trust me bro", "No, but say yes anyway", 
+            "Definitely. Just ignore the consequences", 
+            "It’s fine. Probably.", "For legal reasons, I must say yes"
         ]
+
         answer = random.choice(responses)
         embed = discord.Embed(title="🎱 Magic 8-Ball", color=0x3498db)
         embed.add_field(name="Question", value=f"`{question}`", inline=False)
@@ -249,6 +293,7 @@ class Fun(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="hack", description="Hack another user! Totally 100% legit.")
+    @cooldown(20)
     async def hack(self, interaction: discord.Interaction, target: discord.Member):
         if target == interaction.user:
             return await interaction.response.send_message("❌ You can't hack yourself!", ephemeral=True)
@@ -294,6 +339,7 @@ class Fun(commands.Cog):
     # stupid dum dum discord reserves bot_ for their own shit, don't do drugs kids!
     
     @app_commands.command(name="serverinfo", description="Get information about current server")
+    @cooldown(5)
     async def serverinfo(self, interaction: discord.Interaction, hidden: bool = False):
         guild = interaction.guild
         embed = discord.Embed(
@@ -386,6 +432,7 @@ class Fun(commands.Cog):
 
     
     @app_commands.command(name="letter", description="Generate a random letter.")
+    @cooldown(5)
     async def letter(self, interaction: discord.Interaction):
         letter = random.choice("abcdefghijklmnopqrstuvwxyz")
         embed = discord.Embed(title="🔤 Random Letter", color=0x3498db)
@@ -393,6 +440,7 @@ class Fun(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="cat", description="Get a random cat image")
+    @cooldown(5)
     async def cat(self, interaction: discord.Interaction):
 
         async with aiohttp.ClientSession() as session:
@@ -412,6 +460,7 @@ class Fun(commands.Cog):
                 await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="dog", description="Get a random dog image")
+    @cooldown(5)
     async def dog(self, interaction: discord.Interaction):
         async with aiohttp.ClientSession() as session:
             async with session.get("https://dog.ceo/api/breeds/image/random") as resp:
